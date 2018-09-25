@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	client "github.com/influxdata/influxdb/client/v2"
 	"gopkg.in/mcuadros/go-syslog.v2"
-	"net"
 	"os"
 	"regexp"
 	"strconv"
@@ -11,13 +11,19 @@ import (
 	"time"
 )
 
-func main() {
+var c client.Client
+var database_name string
 
-	conn, err := net.Dial("tcp", os.Getenv("OPENTSDB_IP"))
+func main() {
+	var err error
+	c, err = client.NewHTTPClient(client.HTTPConfig{
+		Addr: os.Getenv("INFLUX_URL"),
+	})
 	if err != nil {
-		fmt.Println("dial error:", err)
-		return
+		fmt.Println(err)
+		os.Exit(1)
 	}
+	database_name = os.Getenv("DATABASE_NAME")
 
 	channel := make(syslog.LogPartsChannel)
 	handler := syslog.NewChannelHandler(channel)
@@ -38,6 +44,13 @@ func main() {
 			t["app"] = logParts["hostname"].(string)
 			measurements := re.FindAllStringSubmatch(message, -1)
 			tags := tagsRe.FindAllStringSubmatch(message, -1)
+			bp, err := client.NewBatchPoints(client.BatchPointsConfig{
+				Database:  database_name,
+				Precision: "us",
+			})
+			if err != nil {
+				fmt.Println(err)
+			}
 			for _, v := range measurements {
 				var finalval string
 				finalval = v[3]
@@ -64,21 +77,42 @@ func main() {
 				fields := map[string]interface{}{
 					"value": value,
 				}
-				tsdbmetric := v[1] + "." + t["metric"]
-				tsdbtags := "app=" + t["app"]
+				infmetric := v[1] + "." + t["metric"]
+				inftags := "app=" + t["app"]
+				var influxtags map[string]string
+				influxtags = make(map[string]string)
 				for _, tagelement := range tags {
-					tsdbtags = tsdbtags + " " + tagelement[1] + "=" + tagelement[2]
+					inftags = inftags + " " + tagelement[1] + "=" + tagelement[2]
+					influxtags[tagelement[1]] = tagelement[2]
 				}
-				tsdbvalue := fields["value"].(float64)
-				s := strconv.FormatFloat(tsdbvalue, 'f', -1, 64)
-				str := logParts["timestamp"].(time.Time)
-				timestamp := strconv.FormatInt(str.UnixNano()/int64(time.Millisecond), 10)
-				put := "put " + tsdbmetric + " " + timestamp + " " + s + " " + tsdbtags + "\n"
-				fmt.Fprintf(conn, put)
+				infvalue := fields["value"].(float64)
+				s := strconv.FormatFloat(infvalue, 'f', -1, 64)
+				influxfields := map[string]interface{}{
+					"value": s,
+				}
+				pt, err := client.NewPoint(
+					infmetric,
+					influxtags,
+					influxfields,
+					time.Now(),
+				)
+				if err != nil {
+					fmt.Println(err)
+				}
+				bp.AddPoint(pt)
+
 			}
+			go sendtoinflux(bp)
 		}
 	}(channel)
 
 	server.Wait()
+
+}
+
+func sendtoinflux(bp client.BatchPoints) {
+	if err := c.Write(bp); err != nil {
+		fmt.Println(err)
+	}
 
 }
