@@ -5,6 +5,7 @@ RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 COPY . /usr/src/app
 RUN go get "gopkg.in/mcuadros/go-syslog.v2"
+RUN go get "github.com/influxdata/influxdb/client/v2"
 RUN go build main.go
 CMD ["/usr/src/app/main"]
 EXPOSE 9000
