@@ -34,6 +34,9 @@ func main() {
     go func(channel syslog.LogPartsChannel) {
         for logParts := range channel {
             message, _ := logParts["message"].(string)
+            if strings.Contains(message, "v-user-client-metrics") {
+                  continue
+            }
             t := make(map[string]string)
             t["app"] = logParts["hostname"].(string)
             measurements := re.FindAllStringSubmatch(message, -1)
