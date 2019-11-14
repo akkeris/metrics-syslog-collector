@@ -82,6 +82,9 @@ func main() {
                 s := strconv.FormatFloat(tsdbvalue, 'f', -1, 64)
                 timestamp := strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10)
                 put := "put " + tsdbmetric + " " + timestamp + " " + s + " " + tsdbtags + "\n"
+                if os.Getenv("DEBUG")=="true" {
+                    fmt.Println(put)
+                }
                 fmt.Fprintf(conn, put)
             }
         }
