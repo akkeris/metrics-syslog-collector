@@ -31,7 +31,7 @@ Metrics Syslog Collector has two major requirements - a Postgres database and an
 | DEBUG                 | Set to "true" to print out additional degugging info              | Optional  |
 | OPENTSDB_IP           | IP address of the OpenTSDB compatible server to send metrics to   | Required  |
 | PORT                  | Network port to listen on                                         | Required  |
-| UNIQUE_METRIC_LIMIT   | How many metrics should be allowed per app - default is 200       | Optional  |
+| UNIQUE_METRIC_LIMIT   | How many metrics should be allowed per app - default is 100       | Optional  |
 
 ## Running
 
