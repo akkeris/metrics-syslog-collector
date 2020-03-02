@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -132,6 +135,58 @@ func sendMetric(v []string, t map[string]string, message string, tags [][]string
 	fmt.Fprintf(conn, put)
 }
 
+func rejectMetric(app string, metric string, metricType string) {
+	appParts := strings.SplitN(app, "-", 2)
+	appName := appParts[0]
+	appSpace := appParts[1]
+
+	rejectMessage := struct {
+		Log        string      `json:"log"`
+		Stream     string      `json:"stream"`
+		Time       time.Time   `json:"time"`
+		Kubernetes interface{} `json:"kubernetes"`
+		Topic      string      `json:"topic"`
+	}{
+		"Unique metrics limit exceeded. Metric discarded: [" + metricType + "] " + metric,
+		"stdout",
+		time.Now(),
+		struct {
+			PodName       string `json:"pod_name"`
+			ContainerName string `json:"container_name"`
+		}{
+			"akkeris-warning",
+			appName,
+		},
+		appSpace,
+	}
+
+	var logshuttleURL string
+	if os.Getenv("LOGSHUTTLE_URL") != "" {
+		logshuttleURL = os.Getenv("LOGSHUTTLE_URL")
+	} else {
+		logshuttleURL = "http://logshuttle.akkeris-system.svc.cluster.local"
+	}
+
+	jsonb, err := json.Marshal(rejectMessage)
+	if err != nil {
+		fmt.Println("Unable to send reject message to logshuttle")
+		fmt.Println(err)
+		return
+	}
+
+	resp, err := http.Post(logshuttleURL+"/log-events", "application/json", bytes.NewBuffer(jsonb))
+	if err != nil {
+		fmt.Println("Unable to send reject message to logshuttle")
+		fmt.Println(err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		fmt.Println("Error: " + strconv.Itoa(resp.StatusCode) + " response returned from logshuttle")
+	}
+}
+
 func main() {
 	var err error
 	conn, err = net.Dial("tcp", os.Getenv("OPENTSDB_IP"))
@@ -186,6 +241,8 @@ func main() {
 				ok := checkMetric(t["app"], t["metric"])
 				if ok {
 					sendMetric(v, t, message, tags)
+				} else {
+					rejectMetric(t["app"], t["metric"], v[1])
 				}
 			}
 		}

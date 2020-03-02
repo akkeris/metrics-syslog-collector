@@ -25,13 +25,14 @@ Metrics Syslog Collector has two major requirements - a Postgres database and an
 
 ## Environment Variables
 
-| Name                  | Description                                                       | Required  |
-| --------------------- | ----------------------------------------------------------------- | --------- |
-| DATABASE_URL          | URL connection string for a Postgres database                     | Required  |
-| DEBUG                 | Set to "true" to print out additional degugging info              | Optional  |
-| OPENTSDB_IP           | IP address of the OpenTSDB compatible server to send metrics to   | Required  |
-| PORT                  | Network port to listen on                                         | Required  |
-| UNIQUE_METRIC_LIMIT   | How many metrics should be allowed per app - default is 100       | Optional  |
+| Name                  | Description                                                               | Required  |
+| --------------------- | ------------------------------------------------------------------------- | --------- |
+| DATABASE_URL          | URL connection string for a Postgres database                             | Required  |
+| DEBUG                 | Set to "true" to print out additional degugging info                      | Optional  |
+| OPENTSDB_IP           | IP address of the OpenTSDB compatible server to send metrics to           | Required  |
+| PORT                  | Network port to listen on                                                 | Required  |
+| UNIQUE_METRIC_LIMIT   | How many metrics should be allowed per app - default is 100               | Optional  |
+| LOGSHUTTLE_URL        | URL of logshuttle (for reject messages) (defaults to in-cluster hostname) | Optional  | 
 
 ## Running
 
