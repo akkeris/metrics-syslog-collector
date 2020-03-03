@@ -179,6 +179,11 @@ func rejectMetric(app string, metric string, metricType string) {
 		}
 	}
 
+	logMessage := "Unique metrics limit exceeded. Metric discarded: [" + metricType + "] " + metric
+	if os.Getenv("UNIQUE_METRIC_LIMIT_HELP") != "" {
+		logMessage = "(" + os.Getenv("UNIQUE_METRIC_LIMIT_HELP") + ") " + logMessage
+	}
+
 	rejectMessage := struct {
 		Log        string      `json:"log"`
 		Stream     string      `json:"stream"`
@@ -186,7 +191,7 @@ func rejectMetric(app string, metric string, metricType string) {
 		Kubernetes interface{} `json:"kubernetes"`
 		Topic      string      `json:"topic"`
 	}{
-		Log:    "Unique metrics limit exceeded. Metric discarded: [" + metricType + "] " + metric,
+		Log:    logMessage,
 		Stream: "stdout",
 		Time:   time.Now(),
 		Kubernetes: struct {

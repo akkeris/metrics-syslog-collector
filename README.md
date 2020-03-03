@@ -45,6 +45,7 @@ If you wish to limit the number of unique metrics that apps can submit to Influx
 | DATABASE_URL                | URL connection string for a Postgres database. **Required**                                     | 
 | UNIQUE_METRIC_LIMIT         | How many metrics should be allowed per app? (default 100)                                       |
 | LOGSHUTTLE_URL              | Set this to "true" to send rejection messages back to the app's logs                            |
+| UNIQUE_METRIC_LIMIT_HELP    | Specify a link to the docs in the rejection message (optional)                                  |
 | REJECT_MESSAGE_LIMIT        | Limit the number of times we report to the app logs (default 1) (reset on application restart)  | 
 
 ## Running
