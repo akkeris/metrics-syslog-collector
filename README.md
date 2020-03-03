@@ -21,17 +21,32 @@ Examples:
 
 ## Requirements
 
-Metrics Syslog Collector has two major requirements - a Postgres database and an OpenTSDB compatible server (i.e. influxdb)
+Metrics Syslog Collector has one required dependency and one optional - an OpenTSDB compatible server (i.e. influxdb) is required, and a Postgres database is optional (although required for metric limiting)
 
 ## Environment Variables
 
-| Name                  | Description                                                       | Required  |
-| --------------------- | ----------------------------------------------------------------- | --------- |
-| DATABASE_URL          | URL connection string for a Postgres database                     | Required  |
-| DEBUG                 | Set to "true" to print out additional degugging info              | Optional  |
-| OPENTSDB_IP           | IP address of the OpenTSDB compatible server to send metrics to   | Required  |
-| PORT                  | Network port to listen on                                         | Required  |
-| UNIQUE_METRIC_LIMIT   | How many metrics should be allowed per app - default is 100       | Optional  |
+For basic usage, only the following environment variables are required:
+
+| Name                        | Description                                                               | Required  |
+| --------------------------- | ------------------------------------------------------------------------- | --------- |
+| OPENTSDB_IP                 | IP address of the OpenTSDB compatible server to send metrics to           | Required  |
+| PORT                        | Network port to listen on                                                 | Required  |
+| DEBUG                       | Set to "true" to print out additional degugging info                      | Optional  |
+
+### Metric Limiting
+
+If you wish to limit the number of unique metrics that apps can submit to Influx, you can use the following environment variables.
+
+**NOTE:** A Postgres database is required for metric limiting
+
+| Name                        | Description                                                                                     |
+| --------------------------- | ----------------------------------------------------------------------------------------------- | 
+| ENABLE_UNIQUE_METRIC_LIMIT  | Limit how many metrics each app can send to influx                                              |
+| DATABASE_URL                | URL connection string for a Postgres database. **Required**                                     | 
+| UNIQUE_METRIC_LIMIT         | How many metrics should be allowed per app? (default 100)                                       |
+| LOGSHUTTLE_URL              | Set this to "true" to send rejection messages back to the app's logs                            |
+| UNIQUE_METRIC_LIMIT_HELP    | Specify a link to the docs in the rejection message (optional)                                  |
+| REJECT_MESSAGE_LIMIT        | Limit the number of times we report to the app logs (default 1) (reset on application restart)  | 
 
 ## Running
 
@@ -92,6 +107,7 @@ $ createdb metrics-syslog-collector
 
 Get your environment variables ready and put them in a file (`config.env`):
 ```
+export ENABLE_UNIQUE_METRIC_LIMIT=true
 export DATABASE_URL=postgres://[YOUR USER NAME]@127.0.0.1:5432/metrics-syslog-collector?sslmode=disable
 export DEBUG=true
 export OPENTSDB_IP=127.0.0.1:4242

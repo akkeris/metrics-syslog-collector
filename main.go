@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
@@ -19,9 +22,13 @@ import (
 var conn net.Conn
 var db *sql.DB
 
+// Only used if ENABLE_UNIQUE_METRIC_LIMIT is set to "true"
 var uniqueMetricLimit int
 
 const defaultMetricLimit int = 100
+
+// Only used if LOGSHUTTLE_URL is set
+var sentRejections map[string]map[string]int
 
 func initDB() (err error) {
 	var dberr error
@@ -132,6 +139,98 @@ func sendMetric(v []string, t map[string]string, message string, tags [][]string
 	fmt.Fprintf(conn, put)
 }
 
+// checkPreviousRejections - Go through the rejection cache and report if we have reached the rejection limit for the app and metric
+func checkPreviousRejections(app string, metric string, metricType string) bool {
+	limit, err := strconv.Atoi(os.Getenv("REJECT_MESSAGE_LIMIT"))
+	if err != nil {
+		limit = 1
+	}
+
+	if sentRejections == nil {
+		sentRejections = make(map[string]map[string]int)
+	}
+
+	if sentRejections[app] == nil {
+		sentRejections[app] = make(map[string]int)
+	}
+
+	ok := (sentRejections[app][metricType+metric] < limit)
+	sentRejections[app][metricType+metric]++
+
+	return ok
+}
+
+func rejectMetric(app string, metric string, metricType string) {
+	appParts := strings.SplitN(app, "-", 2)
+	appName := appParts[0]
+	appSpace := appParts[1]
+
+	// Replace all # characters with _ so that we don't send anything
+	// to the logshuttle that might be considered a new metric
+	metric = strings.Replace(metric, "#", "_", -1)
+
+	// Limit the number of times we report to the app logs
+	if os.Getenv("REJECT_MESSAGE_LIMIT") != "" {
+		if !checkPreviousRejections(app, metric, metricType) {
+			if os.Getenv("DEBUG") == "true" {
+				fmt.Println("Reject message limit reached for " + app + ": [" + metricType + "] " + metric)
+			}
+			return
+		}
+	}
+
+	logMessage := "Unique metrics limit exceeded. Metric discarded: [" + metricType + "] " + metric
+	if os.Getenv("UNIQUE_METRIC_LIMIT_HELP") != "" {
+		logMessage = "(" + os.Getenv("UNIQUE_METRIC_LIMIT_HELP") + ") " + logMessage
+	}
+
+	rejectMessage := struct {
+		Log        string      `json:"log"`
+		Stream     string      `json:"stream"`
+		Time       time.Time   `json:"time"`
+		Kubernetes interface{} `json:"kubernetes"`
+		Topic      string      `json:"topic"`
+	}{
+		Log:    logMessage,
+		Stream: "stdout",
+		Time:   time.Now(),
+		Kubernetes: struct {
+			PodName       string `json:"pod_name"`
+			ContainerName string `json:"container_name"`
+		}{
+			PodName:       "akkeris/metrics",
+			ContainerName: appName,
+		},
+		Topic: appSpace,
+	}
+
+	var logshuttleURL string
+	if os.Getenv("LOGSHUTTLE_URL") != "" {
+		logshuttleURL = os.Getenv("LOGSHUTTLE_URL")
+	} else {
+		logshuttleURL = "http://logshuttle.akkeris-system.svc.cluster.local"
+	}
+
+	jsonb, err := json.Marshal(rejectMessage)
+	if err != nil {
+		fmt.Println("Unable to send reject message to logshuttle")
+		fmt.Println(err)
+		return
+	}
+
+	resp, err := http.Post(logshuttleURL+"/log-events", "application/json", bytes.NewBuffer(jsonb))
+	if err != nil {
+		fmt.Println("Unable to send reject message to logshuttle")
+		fmt.Println(err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		fmt.Println("Error: " + strconv.Itoa(resp.StatusCode) + " response returned from logshuttle")
+	}
+}
+
 func main() {
 	var err error
 	conn, err = net.Dial("tcp", os.Getenv("OPENTSDB_IP"))
@@ -150,10 +249,12 @@ func main() {
 
 	server.Boot()
 
-	err = initDB()
-	if err != nil {
-		fmt.Println("Error establishing database connection: " + err.Error())
-		return
+	if os.Getenv("ENABLE_UNIQUE_METRIC_LIMIT") == "true" {
+		err = initDB()
+		if err != nil {
+			fmt.Println("Error establishing database connection: " + err.Error())
+			return
+		}
 	}
 
 	if os.Getenv("UNIQUE_METRIC_LIMIT") != "" {
@@ -178,14 +279,28 @@ func main() {
 			t := make(map[string]string)
 			t["app"] = logParts["hostname"].(string)
 
+			// Useful for testing:
+			// t["app"] = logParts["app_name"].(string)
+
 			measurements := re.FindAllStringSubmatch(message, -1)
 			tags := tagsRe.FindAllStringSubmatch(message, -1)
 
 			for _, v := range measurements {
 				t["metric"] = v[2]
-				ok := checkMetric(t["app"], t["metric"])
+
+				// Only check metric limit if ENABLE_UNIQUE_METRIC_LIMIT is set to "true"
+				ok := true
+				if os.Getenv("ENABLE_UNIQUE_METRIC_LIMIT") == "true" {
+					ok = checkMetric(t["app"], t["metric"])
+				}
+
 				if ok {
 					sendMetric(v, t, message, tags)
+				} else {
+					// Only send rejection message if LOGSHUTTLE_URL is set
+					if os.Getenv("LOGSHUTTLE_URL") != "" {
+						rejectMetric(t["app"], t["metric"], v[1])
+					}
 				}
 			}
 		}
