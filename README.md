@@ -140,3 +140,45 @@ Now, we can query Influx to see if the data was sent successfully:
 ```shell
 $ curl http://127.0.0.1:8086/query\?db\=opentsdb\&q\=SHOW%20MEASUREMENTS
 ```
+
+## Validation
+
+Once this is is setup in your cluster, you can head to the `akkeris-system` namespace to see if this is working correctly. 
+
+First, verify that you see the deployment in the namespace: 
+
+```bash
+# Verify that you see the deployment in the akkeris-system namespace 
+kubectl get deployments | grep metrics-syslog-collector
+metrics-syslog-collector      2/2     2            2           323d
+# Check for active running pods 
+kubectl get pods | grep metrics-syslog-collector
+metrics-syslog-collector-5bfdb5d5c7-4rtxq      1/1     Running            0          4d18h
+metrics-syslog-collector-5bfdb5d5c7-jnfcb      1/1     Running            0          4d18h
+```
+
+Finally, check that the logs are flowing in your pods. These logs are fairly verbose, so when you are tailing the logs the output should be substantial in a production environment. Here is a log excerpt for a functioning `metric-syslog-collector`: 
+
+```bash
+kubectl logs -f metrics-syslog-collector-<pod>-<id>
+
+put count.request.status.200 1702000635911 1 app=give-perf-prd requested_client=greatwork dyno=dyno-8b8c6c687-444jb path=GET/eProduct/:eProductId
+
+put count.request 1702000635912 1 app=give-perf-prd requested_client=greatwork dyno=dyno-8b8c6c687-444jb path=GET/eProduct/:eProductId
+
+put measure.service 1702000635913 166 app=give-perf-prd requested_client=greatwork dyno=dyno-8b8c6c687-444jb path=GET/eProduct/:eProductId
+
+put count.request.status.200 1702000635914 1 app=give-perf-prd requested_client=greatwork dyno=dyno-8b8c6c687-444jb path=GET/eProduct/:eProductId
+
+put count.request 1702000635915 1 app=give-perf-prd requested_client=greatwork dyno=dyno-8b8c6c687-444jb path=GET/eProduct/:eProductId
+
+put measure.request.identity.search 1702000636080 21 app=identity2-core-prd
+
+put measure.es.identity.bulklookup 1702000636081 7 app=identity2-core-prd
+
+put count.request.graphql.currentIdentity 1702000636082 1 app=identity2-core-prd
+
+put measure.request.graphql.currentIdentity 1702000636083 14 app=identity2-core-prd
+
+put measure.es.identity.bulklookup 1702000636085 7 app=identity2-core-prd
+```
